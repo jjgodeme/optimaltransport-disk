@@ -1,0 +1,585 @@
+-- FreeFem++ v4.7 (Fri, Sep 04, 2020  1:37:14 AM - git v4.7-2-g3716c303)
+ Load: lg_fem lg_mesh lg_mesh3 eigenvalue
+    1 : // ALG2 for Wkappa ring-road
+    2 :
+    3 :
+    4 : include "PROX2D.idp"// auxiliary Proximal for the original Benamou-Brenier
+    2 : // computes the projection (minimal Euclidean distance) of the input sigma=(a,bx,by) on the set $K={a+|b|^2/2 \lAeq 0}$
+    3 :
+    4 :
+    5 :
+    6 : func real[int] ProxBB2Dint(real[int] &q)
+    7 : {
+    8 :     // for the case where nothing needs to be done, i-e input already belongs to the convex set
+    9 :    real a = q[0] ; real b1  = q[1] ; real b2 = q[2];  // in 2 space dimensions, so b=(bx,by)
+   10 :    real normm = (b1^2 + b2^2)/2;
+   11 :    if( a+normm > 0 )
+   12 :    {  // if a +|b|^2/2 <=0 then (a,b) already belong to the convex set so there is nothing to do and proj (a,b)=A(a,b)
+   13 :     //////////////// start newton loop to find the cubic root ///////////////////////
+   14 :         int maxit = 200; // maximal number of iterations
+   15 :         real tol = 1.e-09; // tolerance for the residual
+   16 :         int  k=0;       // iteration counter
+   17 :         real err=1;     // absolute error
+   18 :         real l=1.e+04;  // start searching for the highest (positive) root very far to the right
+   19 :         real ltemp;
+   20 :         real P;
+ *** Warning  The identifier P hide a Global identifier
+                // 3rd order polynomial evaluated at the current value of lambda
+   21 :         real Pl;        // derivative of the polynomial evaluated at the current value of lambda
+   22 :         while(k < maxit && err > tol)
+   23 :                 {  // newton
+   24 :                 ltemp=l;  // keep a copy ltemp of the previous iteration
+   25 :                 P=(l-a)*(1+l)^2 -normm;
+   26 :                 Pl=(1+l)^2+2*(l-a)*(1+l);
+   27 :                 l=ltemp-(P/Pl);  // update lambda
+   28 :                 k+=1;
+   29 :                 err=abs(l-ltemp); // update the absolute error
+   30 :                 }
+   31 :         q[0]-=l;
+   32 :         q[1]/=(1+l);
+   33 :         q[2]/=(1+l);
+   34 :
+   35 :
+   36 : ////
+   37 :     }
+   38 : return q;
+   39 : }
+   40 :
+   41 : func real[int] ProxBB1Dvisco(real[int] &q, real &kappa)
+   42 : {
+   43 :    real mu=kappa^2;
+   44 :    real a = q[0] ; real c  = q[1] ;   // in 1 space dimensions
+   45 :    real normm = c^2/2;
+   46 :    if( a+(normm/mu) > 0 )       // for the case where nothing needs to be done, i-e input already belongs to theA convex set
+   47 :    {  // if a +|c|^2/(2 kappa^2) <=0 then (a,b) already belong to the convex set so there is nothing to do and pAroj (a,c)=(a,c)
+   48 :     //////////////// start newton loop to find the cubic root ///////////////////////
+   49 :         int maxit = 200; // maximal number of iterations
+   50 :         real tol = 1.e-09; // tolerance for the residual
+   51 :         int  k=0;       // iteration counter
+   52 :         real err=1;     // absolute error
+   53 :         real l=1.e+06;  // start searching for the highest (positive) root very far to the right
+   54 :         real ltemp;
+   55 :         real P;
+ *** Warning  The identifier P hide a Global identifier
+                // 3rd order polynomial evaluated at the current value of lambda
+   56 :         real Pl;        // derivative of the polynomial evaluated at the current value of lambda
+   57 :         while(k < maxit && err > tol)
+   58 :                 {  // newton
+   59 :                 ltemp=l;  // keep a copy ltemp of the previous iteration
+   60 :                 P=(l-a)*((mu+l)^2)-mu*normm;
+   61 :                 Pl=(mu+l)^2 + 2.*(l-a)*(mu+l);
+   62 :                 l=ltemp-(P/Pl);  // update lambda
+   63 :                 k+=1;
+   64 : /*              cout << "Newton iteration " << k << endl;*/
+   65 :                 err=abs(l-ltemp); // update the absolute error
+   66 :                 }
+   67 :         q[0]-=l;
+   68 :         q[1]*=mu;
+   69 :         q[1]/=(mu+l);
+   70 :
+   71 :
+   72 : ////
+   73 :     }
+   74 : return q;
+   75 : }
+   76 :
+   77 :
+   78 : // unbalanced for kappa =1
+   79 :
+   80 : func real[int] ProxUnbalBB2D(real[int] &q)
+   81 : {
+   82 :     // for the case where nothing needs to be done, i-e input already belongs to the convex set
+   83 :    real a = q[0] ; real b1  = q[1] ; real b2 = q[2]; real c =q[3];  // in 2 space dimensions, so b=(bx,by)
+   84 :    real normm = (b1^2 + b2^2 + c^2)/2;
+   85 :    if( a+normm > 0 )
+   86 :    {  // if a +|b|^2/2 <=0 then (a,b) already belong to the convex set so there is nothing to do and proj (a,b)=A(a,b)
+   87 :     //////////////// start newton loop to find the cubic root ///////////////////////
+   88 :         int maxit = 200; // maximal number of iterations
+   89 :         real tol = 1.e-09; // tolerance for the residual
+   90 :         int  k=0;       // iteration counter
+   91 :         real err=1;     // absolute error
+   92 :         real l=1.e+04;  // start searching for the highest (positive) root very far to the right
+   93 :         real ltemp;
+   94 :         real P;
+ *** Warning  The identifier P hide a Global identifier
+                // 3rd order polynomial evaluated at the current value of lambda
+   95 :         real Pl;        // derivative of the polynomial evaluated at the current value of lambda
+   96 :         while(k < maxit && err > tol)
+   97 :                 {  // newton
+   98 :                 ltemp=l;  // keep a copy ltemp of the previous iteration
+   99 :                 P=(l-a)*(1+l)^2 -normm;
+  100 :                 Pl=(1+l)^2+2*(l-a)*(1+l);
+  101 :                 l=ltemp-(P/Pl);  // update lambda
+  102 :                 k+=1;
+  103 :                 err=abs(l-ltemp); // update the absolute error
+  104 :                 }
+  105 :         q[0]-=l;
+  106 :         q[1]/=(1+l);
+  107 :         q[2]/=(1+l);
+  108 :         q[3]/=(1+l);
+  109 :
+  110 :
+  111 : ////
+  112 :     }
+  113 : return q;
+  114 : }
+  115 :
+  116 :
+  117 :
+  118 :
+  119 : /*macro numbbvisco(l,a,nb,mu) (-l^3+(a-2*mu)*l^2+(2*a*mu- mu*mu)*l+a*mu*mu+nb*mu) // EOM*/
+  120 : /*macro denbbvisco(l,a,mu) (-3*l^2+2*(a-2*mu)*l+2*a*mu- mu^2) // EOM*/
+  121 :
+  122 : /*func real[int] ProxBB1Dvisco(real[int] &sig, real &kappa) {  // newton version atte*/
+  123 : /*real mu=kappa^2;*/
+  124 : /*// takes in where the prox needs to be calculated return arginf*/
+  125 : /*   real ro = sig[0] ; real m1 = sig[1];*/
+  126 : /*   real normm = (m1^2)/2 ;*/
+  127 : /*   if( ro+normm/mu > 0 ) {  // sinon c'est fini*/
+  128 : /*    // newton on the cubic abov*/
+  129 : /*  int k =0 ;*/
+  130 : /* real  u0 = 10 ;*/
+  131 : /* real f0=  numbbvisco(u0,ro,normm,mu) ;  // toujours negatif*/
+  132 : /*real   u1 =0 ;*/
+  133 : /*real f1=  numbbvisco(u1,ro,normm,mu) ; // toujours positif*/
+  134 : /*//cout << f0  << "    " << f1 <<   endl ;*/
+  135 : /*real uc=(u0+u1)/2 ;*/
+  136 : /*real fc=   numbbvisco(uc,ro,normm,mu) ;*/
+  137 : /*while( abs(u0-u1) > 1.e-15){*/
+  138 : /*if(f0*fc >0) {u0 = uc ; f0= fc ; }*/
+  139 : /*else {u1 =uc ; }*/
+  140 : /*uc=(u0+u1)/2 ;*/
+  141 : /*fc= numbbvisco(uc,ro,normm,mu);*/
+  142 : /*k+=1;*/
+  143 : /*}*/
+  144 : /*cout << "Newton iteration" <<  k  <<  endl ;*/
+  145 : /*sig[0] -= uc ;   sig[1] /=(mu+uc) ;sig[1] *=mu;}*/
+  146 : /*////*/
+  147 : /*return sig ; }*/
+  148 :   // file with prox algorithms
+    5 : load "msh3"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\msh3 = 0)  // for 3d
+    6 : load "medit"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\medit = 0) //
+    7 : load "tetgen"(load: loadLibary C:\Program Files (x86)\FreeFem++\\.\tetgen = 0) load: tetgen
+ 
+    8 :
+    9 : verbosity=0;
+   10 :
+   11 : real epsrelax=0; // small relaxation parameter for the elliptic problem (selects a unique phi to eliminate additAion of constants, probably not needed)
+   12 : real r=1.; // regularization parameter in the augmented lagragian L= L+r|...|^2
+   13 : real kappa=1;
+   14 : int nx=40, nt=30;
+   15 : real tol=1e-6;  // tolerance parameter for the iteration-stop criterion
+   16 : int imax=200; //max number of iterations for the main loop
+   17 :
+   18 : // matlab color map (maybe we can find something better)
+   19 : include "colormapmatlab.idp"// matlab color map (maybe we can find something better)
+    2 : real[int] colormapHSVjet = [
+    3 :      0.6667,    1.0000,    0.5625,
+    4 :      0.6667,    1.0000,    0.6250,
+    5 :      0.6667,    1.0000,    0.6875,
+    6 :      0.6667,    1.0000,    0.7500,
+    7 :      0.6667,    1.0000,    0.8125,
+    8 :      0.6667,    1.0000,    0.8750,
+    9 :      0.6667,    1.0000,    0.9375,
+   10 :      0.6667,    1.0000,    1.0000,
+   11 :      0.6563,    1.0000,    1.0000,
+   12 :      0.6458,    1.0000,    1.0000,
+   13 :      0.6354,    1.0000,    1.0000,
+   14 :      0.6250,    1.0000,    1.0000,
+   15 :      0.6146,    1.0000,    1.0000,
+   16 :      0.6042,    1.0000,    1.0000,
+   17 :      0.5938,    1.0000,    1.0000,
+   18 :      0.5833,    1.0000,    1.0000,
+   19 :      0.5729,    1.0000,    1.0000,
+   20 :      0.5625,    1.0000,    1.0000,
+   21 :      0.5521,    1.0000,    1.0000,
+   22 :      0.5417,    1.0000,    1.0000,
+   23 :      0.5313,    1.0000,    1.0000,
+   24 :      0.5208,    1.0000,    1.0000,
+   25 :      0.5104,    1.0000,    1.0000,
+   26 :      0.5000,    1.0000,    1.0000,
+   27 :      0.4889,    0.9375,    1.0000,
+   28 :      0.4762,    0.8750,    1.0000,
+   29 :      0.4615,    0.8125,    1.0000,
+   30 :      0.4444,    0.7500,    1.0000,
+   31 :      0.4242,    0.6875,    1.0000,
+   32 :      0.4000,    0.6250,    1.0000,
+   33 :      0.3704,    0.5625,    1.0000,
+   34 :      0.3333,    0.5000,    1.0000,
+   35 :      0.2963,    0.5625,    1.0000,
+   36 :      0.2667,    0.6250,    1.0000,
+   37 :      0.2424,    0.6875,    1.0000,
+   38 :      0.2222,    0.7500,    1.0000,
+   39 :      0.2051,    0.8125,    1.0000,
+   40 :      0.1905,    0.8750,    1.0000,
+   41 :      0.1778,    0.9375,    1.0000,
+   42 :      0.1667,    1.0000,    1.0000,
+   43 :      0.1563,    1.0000,    1.0000,
+   44 :      0.1458,    1.0000,    1.0000,
+   45 :      0.1354,    1.0000,    1.0000,
+   46 :      0.1250,    1.0000,    1.0000,
+   47 :      0.1146,    1.0000,    1.0000,
+   48 :      0.1042,    1.0000,    1.0000,
+   49 :      0.0938,    1.0000,    1.0000,
+   50 :      0.0833,    1.0000,    1.0000,
+   51 :      0.0729,    1.0000,    1.0000,
+   52 :      0.0625,    1.0000,    1.0000,
+   53 :      0.0521,    1.0000,    1.0000,
+   54 :      0.0417,    1.0000,    1.0000,
+   55 :      0.0313,    1.0000,    1.0000,
+   56 :      0.0208,    1.0000,    1.0000,
+   57 :      0.0104,    1.0000,    1.0000,
+   58 :           0,    1.0000,    1.0000,
+   59 :           0,    1.0000,    0.9375,
+   60 :           0,    1.0000,    0.8750,
+   61 :           0,    1.0000,    0.8125,
+   62 :           0,    1.0000,    0.7500,
+   63 :           0,    1.0000,    0.6875,
+   64 :           0,    1.0000,    0.6250,
+   65 :           0,    1.0000,    0.5625,
+   66 :           0,    1.0000,    0.5000];
+   67 :
+   20 :
+   21 : //////////////////////// build meshes ////////////////////////
+   22 :
+   23 : real tmin=0, tmax=1;
+   24 : // face numbering
+   25 : int unused=0;
+   26 : int labelt0 = 1; //bottom boundary at t=0
+   27 : int labelt1 = 3; //top boundaryat t=1
+   28 : int labeboundary = 2; // boundary in x
+   29 :
+   30 :
+   31 : // Build cylinder
+   32 : real R = 1. ;                                          // radius of the disk
+   33 : border ci(t=0, 2*pi){x=R*cos(t); y=R*sin(t); label=labeboundary;} // parametrization of the circle of radius R
+   34 : mesh Disk= buildmesh(ci(nx));                           // mesh of the the disk
+   35 :
+   36 : int[int] rup=[0,labelt1] ,  rdown=[0,labelt0], rmid=[labeboundary,labeboundary];
+   37 :
+   38 : mesh3 Cylinder=buildlayers(Disk,nt, zbound=[tmin,tmax] , reffaceup = rup,reffacelow = rdown,labelmid=rmid);
+   39 :
+   40 :
+   41 :
+   42 : real width=0.05;        //small width of the boundary, pseudo 1D line with small thickness dxlocal and height [tA0,t1]=[0,1]
+   43 : real Rb = R - width ;
+   44 : border cib(t=0, 2*pi){x=Rb*cos(t); y=Rb*sin(t); label=5;}
+   45 :
+   46 :
+   47 :
+   48 : mesh Diskboundary = buildmesh(ci(nx) + cib(-nx));
+   49 :
+   50 : mesh3 Cylinderboundary=buildlayers(Diskboundary,nt, zbound=[tmin,tmax] , reffaceup = rup,reffacelow = rdown,labeAlmid=rmid);
+   51 :
+   52 :
+   53 :
+   54 : //cout << "dx = " << dxlocal << endl;
+   55 :
+   56 : //Plots to see meshes
+   57 : plot(Disk, wait=true);
+   58 : plot(Diskboundary, wait=true);
+   59 : plot(Cylinder, wait=true);
+   60 : plot(Cylinderboundary, wait=true);
+   61 :
+   62 :
+   63 : ////////////////////// functional spaces ///////////////////////
+   64 : fespace VC2(Cylinder,P2);  //P2 element on the 3D cylinder
+   65 : fespace VC1(Cylinder,P1);  //P1 element on the 3D cylinder
+   66 :
+   67 : fespace VD1(Disk,P1);  //P1 element on the 2D disk
+   68 :
+   69 : fespace VCb2(Cylinderboundary,P2);  //P2 element on the 3D cylinder
+   70 : fespace VCb1(Cylinderboundary,P1);  //P1 element on the 3D cylinder
+   71 :
+   72 : fespace VDb1(Diskboundary,P1);  //P1 element on the 2D disk
+   73 :
+   74 : ///////// the projection and finite elements
+   75 : include "PROJ2D.idp"///// define the derivative and projection operators on the square
+    2 :
+    3 : matrix DxC=interpolate(VC1,VC2, op=1); // DxS*u[] returns the P1 vector corresponding to dx(u), the derivative oAf a P2 function u defined on the cylinder*/
+    4 : matrix DyC=interpolate(VC1,VC2, op=2); // DyS*u[] returns the P1 vector corresponding to dy(u), the derivative oAf a P2 function u defined on the cylinder*/
+    5 : matrix DtC=interpolate(VC1,VC2, op=3); // DtS*u[] returns the P1 vector corresponding to dt(u), the derivative oAf a P2 function u defined on the cylinder
+    6 :
+    7 :
+    8 : ///// define the derivative and projection operators on the boundary
+    9 :
+   10 : matrix Dtb=interpolate(VCb1,VCb2, op=3); // matrix of the time-derivative on the boundary
+   11 : matrix Dxb=interpolate(VCb1,VCb2, op=1); // matrix of the x-derivative on the boundary
+   12 : matrix Dyb=interpolate(VCb1,VCb2, op=2); // matrix of the y-derivative on the boundary
+   13 :
+   14 : matrix P21b=interpolate(VCb1,VCb2);  // matrix of the projection P2 to P1 on the boundary
+   15 :
+   16 :
+   17 :
+   18 :
+   19 : ////// define the projections boundary from-to the cylinder (with extension by zero if needed)
+   20 : matrix extendCb2toC2 = interpolate(VC2, VCb2, inside=1); // take a P2 function u on the boundary and extend it bAy zero to a create a P2 function on the whole cylinder
+   21 : matrix extendCb1toC1 = interpolate(VC1, VCb1, inside=1); // take a P1 function u on the boundary and extend it bAy zero to a create a P1 function on the whole cylinder
+   22 :
+   23 : matrix projectC2toCb2 = interpolate(VCb2, VC2); // take a P2 function u on the cylinder and take its trace on thAe boundary as a P2 function
+   24 : matrix projectC2toCb1 = interpolate(VCb1, VC2); // take a P2 function u on the cylinder and take its trace on thAe boundary as a P1 function
+   25 :
+   26 :   // file with projections and derivatives
+   76 :
+   77 : cout<< "end PROJ2D " <<endl;
+   78 :
+   79 :
+   80 : ////////////time marginals ////////////////
+   81 :
+   82 : // Initialization omega at t=0 and t=1
+   83 : VD1 omega0=exp(-30*((x+0.4)^2 +(y+0.4)^2));
+   84 : VD1 omega1=exp(-30*((x-0.4)^2 +(y-0.4)^2));
+   85 :
+   86 : // Initialization gamma at t=0 and t=1
+   87 : VDb1 gamma0= 0;
+   88 : VDb1 gamma1= 0;
+   89 :
+   90 : // compute the initial/terminal masses and renormalize the marginals to total mass=1
+   91 : real Momega0, Momega1, Mgamma0, Mgamma1, M0, M1; // S=square, B=boundaries, m=total
+   92 : Momega0=int2d(Disk)(omega0);
+   93 : Momega1=int2d(Disk)(omega1);
+   94 : Mgamma0 =int1d(Diskboundary,labeboundary)(gamma0);
+   95 : Mgamma1 =int1d(Diskboundary,labeboundary)(gamma1);
+   96 :
+   97 : // total masses
+   98 : M0=Momega0+Mgamma0;
+   99 : M1=Momega1+Mgamma1;
+  100 :
+  101 : // renormalize marginals at t=0
+  102 : omega0=omega0/M0;
+  103 : gamma0=gamma0/M0;
+  104 :
+  105 : // renormalize marginals at t=1
+  106 : omega1=omega1/M1;
+  107 : gamma1=gamma1/M1;
+  108 :
+  109 :
+  110 :
+  111 : plot(omega0,value=true,ps="Init_omega0.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  112 : plot(omega1,value=true,ps="Init_omega1.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  113 : plot(gamma0,value=true,ps="Init_gamma0.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  114 : plot(gamma1,value=true,ps="Init_gamma1.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  115 :
+  116 :
+  117 :
+  118 : /////////////////////// define primary variables /////////////////////////////
+  119 : VC2 phi=0;    // phi P2 on the 3D cylinder
+  120 : VCb2 psib=0;  // psi P2 on the 3D boundary
+  121 : VC2 psiC=0 ;  // version of psi on the boundary and extended by zero inside the cylinder, only required to solveA for Phi
+  122 :
+  123 : // initializations to 0 and/or to the linear-in-time interpolation for the densities omega/gamma
+  124 : VC1 omega=(1-z)*omega0 + z*omega1, Fx=0, Fy=0;
+  125 : VCb1 gamma=(1-z)*gamma0 + z*gamma1, Gx =0, Gy=0, fb=0;
+  126 :
+  127 : VC1 fC=0;  // needed later on because f is needed to assign boundary values for the elliptic problem on phi in tAhe cylinder
+  128 :
+  129 : VC1 dtPhi=0, dxPhi=0, dyPhi=0;
+  130 : VC1 alpha=0, Alpha=0, betax=0, Betax=0, betay=0, Betay=0; // the lower cases are the real variables, the upper cAase are internal
+  131 :
+  132 : VCb1 dtPsi=0, dxPsi=0, dyPsi=0 ;
+  133 : VCb1 ab=0, Ab=0, bxb=0, Bxb=0, byb=0, Byb=0,cb=0, Cb=0; // the lower cases are the real variables, the upper casAe are internal
+  134 :
+  135 : VC1 aC=0, bxC, byC, cC=0; // copies of a,b,c extended to the cylinder, needed to assign boundary values in the pAhi-problem
+  136 :
+  137 : //////////////////////// auxiliary variables ////////////////////////
+  138 :
+  139 : VCb2 phib;    // for the right-hand sides in the elliptic problem on the left boundary
+  140 : phib[]=projectC2toCb2*phi[];            //(phiL is the left trace of phi)
+  141 :
+  142 :
+  143 : ////////////////////////////////////////////////////////////////////////////////////////////////////////////////A//
+  144 : ///                                             beginning ALG2 loop
+  145 : ////////////////////////////////////////////////////////////////////////////////////////////////////////////////A////
+  146 :
+  147 : // define parameters ////////////////////////////////////
+  148 :
+  149 : real err =1;    // current error, initialize to zero so that the loop begins
+  150 : int ii=0; // internal loop counter
+  151 :
+  152 : plot(omega, wait=true, value=true,fill=true,hsv=colormapHSVjet);
+  153 : plot(gamma, wait=true, value=true,fill=true,hsv=colormapHSVjet);
+  154 :
+  155 :
+  156 : while (ii<=imax & err >=tol){
+  157 :
+  158 : VC1 omegatemp=omega;
+  159 : VCb1 gammatemp=gamma;
+  160 :
+  161 : /////////////////////// solve in phi ////////////////////////////
+  162 : // create copies Psi,f,c for the Robin boundary conditions in space on phi
+  163 : // psi
+  164 : psiC[]=extendCb2toC2*psib[];
+  165 :
+  166 : // f
+  167 : fC[]=extendCb1toC1*fb[];
+  168 :
+  169 : // c
+  170 : cC[]=extendCb1toC1*cb[];
+  171 :
+  172 :
+  173 : VC2 vC;
+  174 : solve LapC(phi,vC)= int3d(Cylinder)( r*(dx(phi)*dx(vC)+ dy(phi)*dy(vC)+ dz(phi)*dz(vC)) + epsrelax*phi*vC) + intA2d(Cylinder,labeboundary)(r*phi*vC)
+  175 :                          - int2d(Cylinder,labelt1)(omega1*vC) + int2d(Cylinder,labelt0)(omega0*vC) - int3d(CylinAder)((r*alpha-omega)*dz(vC) + (r*betax-Fx)*dx(vC)+  (r*betay-Fy)*dy(vC))
+  176 :        - int2d(Cylinder,labeboundary)((fC+r*(psiC-cC))*vC);
+  177 :
+  178 :
+  179 : /////////////////////// solve in psi ////////////////////////////
+  180 :
+  181 : // create the trace of phi on the boundary
+  182 :
+  183 : phib[]=projectC2toCb2*phi[];
+  184 :
+  185 : VCb2 vb;
+  186 : solve LapCb(psib,vb)= int3d(Cylinderboundary)( r*(dx(psib)*dx(vb)+dy(psib)*dy(vb)+dz(psib)*dz(vb))  + r*psib*vb)A 
+  187 :                         - int3d(Cylinderboundary)((r*ab-gamma)*dz(vb)+ (r*bxb-Gx)*dx(vb) + (r*byb-Gy)*dy(vb) +(rA*(cb+phib)-fb)*vb)
+  188 :       - int2d(Cylinderboundary,labelt1)(gamma1*vb) + int2d(Cylinderboundary,labelt0)(gamma0*vb);
+  189 :
+  190 :
+  191 :
+  192 : //////////////// project on the convex sets of subsolutions //////////////
+  193 :
+  194 : // compute the derivatives for phi
+  195 : dtPhi[]=DtC*phi[];
+  196 : dxPhi[]=DxC*phi[];
+  197 : dyPhi[]=DyC*phi[];
+  198 :
+  199 :
+  200 : // compute the derivatives for psi
+  201 : dtPsi[]=Dtb*psib[];
+  202 : dxPsi[]=Dxb*psib[];
+  203 : dyPsi[]=Dyb*psib[];
+  204 :
+  205 :
+  206 :
+  207 : ////////// projection in the cylinder
+  208 : //lower case will be the projections of the upper cases, i-e (alpha,beta)=proj(Alpha,Beta) in the cylinder and (Aa,b,c)=proj(A,B,C) in the boundary
+  209 :
+  210 : // quantities to be effectively projected, upper case because internal variable
+  211 : //(alpha,beta)=projection (Alpha,Beta)
+  212 : Alpha=dtPhi + omega/r;
+  213 : Betax=dxPhi + Fx/r;
+  214 : Betay=dyPhi + Fy/r;
+  215 :
+  216 : // projection on the convex set
+  217 :
+  218 : for(int j=0; j<VC1.ndof; ++j){
+  219 :         real[int] q(3);
+  220 :         q[0] = Alpha[][j] ; q[1] = Betax[][j]; q[2] = Betay[][j];
+  221 :         q = ProxBB2Dint(q);
+  222 :         alpha[][j]=q[0];
+  223 :         betax[][j]=q[1];
+  224 :   betay[][j]=q[2];
+  225 : }
+  226 :
+  227 : ////////// projection on the lateral boundaries
+  228 : // A=dspi/dt+ gamma/r and C=(psi-phi)+f/r
+  229 :
+  230 : // quantities to be effectively projected
+  231 :
+  232 : Ab=dtPsi + gamma/r;
+  233 : Bxb=dxPsi + Gx/r;
+  234 : Byb=dyPsi + Gy/r;
+  235 :
+  236 : VCb2 dummy2=psib-phib;
+  237 : Cb[]=P21b*dummy2[];
+  238 : Cb[]+=fb[]/r;
+  239 :
+  240 :
+  241 : // projections on the convex set
+  242 : for(int j=0; j<VCb1.ndof; ++j){
+  243 :         real[int] q(4);
+  244 :         q[0] = Ab[][j] ; q[1] = Bxb[][j]; q[2] = Byb[][j] ; ;q[3] = Cb[][j];
+  245 :         q = ProxUnbalBB2D(q);
+  246 :         ab[][j]=q[0];
+  247 :   bxb[][j]=q[1];
+  248 :   byb[][j]=q[2];
+  249 :         cb[][j]=q[3];
+  250 : }
+  251 :
+  252 :
+  253 : ///////////////////// update the gradient ascent*/
+  254 :
+  255 : omega=omega+r*(dtPhi-alpha);
+  256 : Fx=Fx+r*(dxPhi-betax);
+  257 : Fy=Fy+r*(dyPhi-betay);
+  258 :
+  259 :
+  260 : gamma=gamma+r*(dtPsi-ab);
+  261 : Gx=Gx+r*(dxPsi-bxb);
+  262 : Gy=Gy+r*(dyPsi-byb);
+  263 : fb=fb+r*(psib-phib -cb);
+  264 :
+  265 :
+  266 : ////////////// compute the current error easy style
+  267 : real errC,errCb ;
+  268 : errC=int3d(Cylinder)((omega-omegatemp)^2);
+  269 : /*errS=sqrt(errS);*/
+  270 : errCb=int3d(Cylinderboundary)((gamma-gammatemp)^2);
+  271 : /*errCb=sqrt(errCb);*/
+  272 :
+  273 :
+  274 : /*cout << "current left error = " << errL << endl;*/
+  275 : /*cout << "current right error = " << errR << endl;*/
+  276 : /*cout << "current center error = " << errS << endl;*/
+  277 :
+  278 : err=errC+errCb ;
+  279 : /*err=sqrt(err);*/
+  280 :
+  281 :
+  282 : // increment the loop counter
+  283 : ii+=1;
+  284 : cout<< "current error = " << err <<endl;
+  285 : cout<< "current iteration number " << ii <<endl;
+  286 :
+  287 : }
+  288 :
+  289 : plot(omega,value=true,ps="dens_omega.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  290 :
+  291 :
+  292 :
+  293 : /////////////// post-processing and offstream to octave ////////////
+  294 : VC1 gammaC;
+  295 : gammaC[]=extendCb1toC1*gamma[];
+  296 :
+  297 : plot(gammaC,value=true,ps="dens_gamma.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  298 :
+  299 :
+  300 : fC[]=extendCb1toC1*fb[];
+  301 :
+  302 : plot(fC,value=true,ps="dens_reaction.eps", wait=true,fill=true,hsv=colormapHSVjet);
+  303 :
+  304 :
+  305 : // mass omega
+  306 : string smassomega = "MASOmega"+nt+".txt";
+  307 : ofstream rMASOmega(smassomega);
+  308 :
+  309 : // mass gamma :
+  310 : string smassgamma = "MASGamma"+nt+".txt";
+  311 : ofstream rMASGamma(smassgamma);
+  312 :
+  313 : //mass sum :
+  314 : string smasssum = "MASSum"+nt+".txt";
+  315 : ofstream rMASSum(smasssum);
+  316 :
+  317 : VC1 oo1;
+  318 : VCb1 gg1, gg1C ,ff1;
+  319 : for(int jj=0 ;jj<=20;jj++){
+  320 :   real t=jj*0.05;
+  321 :   oo1=omega(x,y,t);
+  322 :   gg1=gamma(x,y,t);
+  323 :   gg1C=gammaC(x,y,t);
+  324 :   ff1=fC(x,y,t);
+  325 :   plot(oo1,value=true,ps="dens_omega-"+t+".eps", wait=true,fill=true,hsv=colormapHSVjet);
+  326 :   plot(gg1C,value=true,ps="dens_gamma-"+t+".eps", wait=true,fill=true,hsv=colormapHSVjet);
+  327 :   plot(ff1,value=true,ps="dens_reaction-"+t+".eps", wait=true,fill=true,hsv=colormapHSVjet);
+  328 :
+  329 :   real Momega=int2d(Cylinder,labelt0)(oo1);
+  330 :   real Mgamma= int2d(Cylinderboundary,labelt0)(gg1);
+  331 :   real Mtotal=Momega+Mgamma;
+  332 :   rMASOmega  << t << "   " <<  Momega << "     "  <<  "\n" ;
+  333 :   rMASGamma  << t << "   " <<Mgamma <<  "     "  <<  "\n" ;
+  334 :   rMASSum    << t << "  " << Mtotal << "    "<<  "\n" ;
+  335 : }
+  336 :  sizestack + 1024 =25160  ( 24136 )
+ 
+ try getConsole C:\Users\seydou\Dropbox\StageM2JJcode\test_2D_Cylindre\Wkappa2D.edp

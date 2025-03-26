@@ -1,0 +1,25 @@
+///// define the derivative and projection operators on the square
+
+matrix DxC=interpolate(VC1,VC2, op=1); // DxS*u[] returns the P1 vector corresponding to dx(u), the derivative of a P2 function u defined on the cylinder*/
+matrix DyC=interpolate(VC1,VC2, op=2); // DyS*u[] returns the P1 vector corresponding to dy(u), the derivative of a P2 function u defined on the cylinder*/
+matrix DtC=interpolate(VC1,VC2, op=3); // DtS*u[] returns the P1 vector corresponding to dt(u), the derivative of a P2 function u defined on the cylinder
+
+
+///// define the derivative and projection operators on the boundary
+
+matrix Dtb=interpolate(VCb1,VCb2, op=3); // matrix of the time-derivative on the boundary
+matrix Dxb=interpolate(VCb1,VCb2, op=1); // matrix of the x-derivative on the boundary
+matrix Dyb=interpolate(VCb1,VCb2, op=2); // matrix of the y-derivative on the boundary
+
+matrix P21b=interpolate(VCb1,VCb2);  // matrix of the projection P2 to P1 on the boundary
+
+
+
+
+////// define the projections boundary from-to the cylinder (with extension by zero if needed)
+matrix extendCb2toC2 = interpolate(VC2, VCb2, inside=1); // take a P2 function u on the boundary and extend it by zero to a create a P2 function on the whole cylinder
+matrix extendCb1toC1 = interpolate(VC1, VCb1, inside=1); // take a P1 function u on the boundary and extend it by zero to a create a P1 function on the whole cylinder
+
+matrix projectC2toCb2 = interpolate(VCb2, VC2); // take a P2 function u on the cylinder and take its trace on the boundary as a P2 function
+matrix projectC2toCb1 = interpolate(VCb1, VC2); // take a P2 function u on the cylinder and take its trace on the boundary as a P1 function
+

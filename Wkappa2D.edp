@@ -1,0 +1,335 @@
+// ALG2 for Wkappa ring-road
+
+
+include "PROX2D.idp"  // file with prox algorithms
+load "msh3"  // for 3d
+load "medit" //
+load "tetgen"
+
+verbosity=0; 
+
+real epsrelax=0; // small relaxation parameter for the elliptic problem (selects a unique phi to eliminate addition of constants, probably not needed)
+real r=1.; // regularization parameter in the augmented lagragian L= L+r|...|^2
+real kappa=1;
+int nx=40, nt=30;
+real tol=1e-6;	// tolerance parameter for the iteration-stop criterion
+int imax=200; //max number of iterations for the main loop
+
+// matlab color map (maybe we can find something better)
+include "colormapmatlab.idp"
+
+//////////////////////// build meshes ////////////////////////
+
+real tmin=0, tmax=1;
+// face numbering
+int unused=0;
+int labelt0 = 1; //bottom boundary at t=0
+int labelt1 = 3; //top boundaryat t=1
+int labeboundary = 2; // boundary in x
+
+
+// Build cylinder
+real R = 1. ;                                          // radius of the disk 
+border ci(t=0, 2*pi){x=R*cos(t); y=R*sin(t); label=labeboundary;} // parametrization of the circle of radius R
+mesh Disk= buildmesh(ci(nx));                           // mesh of the the disk
+
+int[int] rup=[0,labelt1] ,  rdown=[0,labelt0], rmid=[labeboundary,labeboundary];
+
+mesh3 Cylinder=buildlayers(Disk,nt, zbound=[tmin,tmax] , reffaceup = rup,reffacelow = rdown,labelmid=rmid);
+
+
+
+real width=0.05;	//small width of the boundary, pseudo 1D line with small thickness dxlocal and height [t0,t1]=[0,1]
+real Rb = R - width ;  
+border cib(t=0, 2*pi){x=Rb*cos(t); y=Rb*sin(t); label=5;}
+
+
+
+mesh Diskboundary = buildmesh(ci(nx) + cib(-nx)); 
+
+mesh3 Cylinderboundary=buildlayers(Diskboundary,nt, zbound=[tmin,tmax] , reffaceup = rup,reffacelow = rdown,labelmid=rmid);
+
+
+
+//cout << "dx = " << dxlocal << endl;
+
+//Plots to see meshes
+plot(Disk, wait=true);
+plot(Diskboundary, wait=true);
+plot(Cylinder, wait=true);
+plot(Cylinderboundary, wait=true);
+
+
+////////////////////// functional spaces ///////////////////////
+fespace VC2(Cylinder,P2);  //P2 element on the 3D cylinder
+fespace VC1(Cylinder,P1);  //P1 element on the 3D cylinder
+
+fespace VD1(Disk,P1);  //P1 element on the 2D disk
+
+fespace VCb2(Cylinderboundary,P2);  //P2 element on the 3D cylinder
+fespace VCb1(Cylinderboundary,P1);  //P1 element on the 3D cylinder
+
+fespace VDb1(Diskboundary,P1);  //P1 element on the 2D disk
+
+///////// the projection and finite elements
+include "PROJ2D.idp"  // file with projections and derivatives
+
+cout<< "end PROJ2D " <<endl;
+
+
+////////////time marginals ////////////////
+
+// Initialization omega at t=0 and t=1
+VD1 omega0=exp(-30*((x+0.4)^2 +(y+0.4)^2));
+VD1 omega1=exp(-30*((x-0.4)^2 +(y-0.4)^2));
+
+// Initialization gamma at t=0 and t=1
+VDb1 gamma0= 0;
+VDb1 gamma1= 0;
+
+// compute the initial/terminal masses and renormalize the marginals to total mass=1
+real Momega0, Momega1, Mgamma0, Mgamma1, M0, M1; // S=square, B=boundaries, m=total
+Momega0=int2d(Disk)(omega0);
+Momega1=int2d(Disk)(omega1);
+Mgamma0 =int1d(Diskboundary,labeboundary)(gamma0);
+Mgamma1 =int1d(Diskboundary,labeboundary)(gamma1);
+
+// total masses
+M0=Momega0+Mgamma0;
+M1=Momega1+Mgamma1;
+
+// renormalize marginals at t=0
+omega0=omega0/M0;
+gamma0=gamma0/M0;
+
+// renormalize marginals at t=1
+omega1=omega1/M1;
+gamma1=gamma1/M1;
+
+
+
+plot(omega0,value=true,ps="Init_omega0.eps", wait=true,fill=true,hsv=colormapHSVjet);
+plot(omega1,value=true,ps="Init_omega1.eps", wait=true,fill=true,hsv=colormapHSVjet);
+plot(gamma0,value=true,ps="Init_gamma0.eps", wait=true,fill=true,hsv=colormapHSVjet);
+plot(gamma1,value=true,ps="Init_gamma1.eps", wait=true,fill=true,hsv=colormapHSVjet);
+
+
+
+/////////////////////// define primary variables /////////////////////////////
+VC2 phi=0;    // phi P2 on the 3D cylinder
+VCb2 psib=0;  // psi P2 on the 3D boundary
+VC2 psiC=0 ;  // version of psi on the boundary and extended by zero inside the cylinder, only required to solve for Phi
+
+// initializations to 0 and/or to the linear-in-time interpolation for the densities omega/gamma
+VC1 omega=(1-z)*omega0 + z*omega1, Fx=0, Fy=0;
+VCb1 gamma=(1-z)*gamma0 + z*gamma1, Gx =0, Gy=0, fb=0;
+
+VC1 fC=0;  // needed later on because f is needed to assign boundary values for the elliptic problem on phi in the cylinder
+
+VC1 dtPhi=0, dxPhi=0, dyPhi=0;
+VC1 alpha=0, Alpha=0, betax=0, Betax=0, betay=0, Betay=0; // the lower cases are the real variables, the upper case are internal
+
+VCb1 dtPsi=0, dxPsi=0, dyPsi=0 ; 
+VCb1 ab=0, Ab=0, bxb=0, Bxb=0, byb=0, Byb=0,cb=0, Cb=0; // the lower cases are the real variables, the upper case are internal
+
+VC1 aC=0, bxC, byC, cC=0; // copies of a,b,c extended to the cylinder, needed to assign boundary values in the phi-problem
+
+//////////////////////// auxiliary variables ////////////////////////
+
+VCb2 phib;    // for the right-hand sides in the elliptic problem on the left boundary
+phib[]=projectC2toCb2*phi[];  		//(phiL is the left trace of phi)
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// 						beginning ALG2 loop
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// define parameters ////////////////////////////////////
+
+real err =1;    // current error, initialize to zero so that the loop begins
+int ii=0; // internal loop counter
+
+plot(omega, wait=true, value=true,fill=true,hsv=colormapHSVjet);
+plot(gamma, wait=true, value=true,fill=true,hsv=colormapHSVjet);
+
+
+while (ii<=imax & err >=tol){
+
+VC1 omegatemp=omega;
+VCb1 gammatemp=gamma;
+
+/////////////////////// solve in phi ////////////////////////////
+// create copies Psi,f,c for the Robin boundary conditions in space on phi
+// psi
+psiC[]=extendCb2toC2*psib[];
+
+// f
+fC[]=extendCb1toC1*fb[];
+
+// c
+cC[]=extendCb1toC1*cb[];
+
+
+VC2 vC;
+solve LapC(phi,vC)= int3d(Cylinder)( r*(dx(phi)*dx(vC)+ dy(phi)*dy(vC)+ dz(phi)*dz(vC)) + epsrelax*phi*vC) + int2d(Cylinder,labeboundary)(r*phi*vC)
+			 - int2d(Cylinder,labelt1)(omega1*vC) + int2d(Cylinder,labelt0)(omega0*vC) - int3d(Cylinder)((r*alpha-omega)*dz(vC) + (r*betax-Fx)*dx(vC)+  (r*betay-Fy)*dy(vC)) 
+       - int2d(Cylinder,labeboundary)((fC+r*(psiC-cC))*vC);
+
+
+/////////////////////// solve in psi ////////////////////////////
+
+// create the trace of phi on the boundary
+
+phib[]=projectC2toCb2*phi[];
+
+VCb2 vb;
+solve LapCb(psib,vb)= int3d(Cylinderboundary)( r*(dx(psib)*dx(vb)+dy(psib)*dy(vb)+dz(psib)*dz(vb))  + r*psib*vb) 
+			- int3d(Cylinderboundary)((r*ab-gamma)*dz(vb)+ (r*bxb-Gx)*dx(vb) + (r*byb-Gy)*dy(vb) +(r*(cb+phib)-fb)*vb) 
+      - int2d(Cylinderboundary,labelt1)(gamma1*vb) + int2d(Cylinderboundary,labelt0)(gamma0*vb);
+
+
+
+//////////////// project on the convex sets of subsolutions //////////////
+
+// compute the derivatives for phi
+dtPhi[]=DtC*phi[];
+dxPhi[]=DxC*phi[];
+dyPhi[]=DyC*phi[];
+
+
+// compute the derivatives for psi
+dtPsi[]=Dtb*psib[];
+dxPsi[]=Dxb*psib[];
+dyPsi[]=Dyb*psib[];
+
+
+
+////////// projection in the cylinder
+//lower case will be the projections of the upper cases, i-e (alpha,beta)=proj(Alpha,Beta) in the cylinder and (a,b,c)=proj(A,B,C) in the boundary
+
+// quantities to be effectively projected, upper case because internal variable
+//(alpha,beta)=projection (Alpha,Beta)
+Alpha=dtPhi + omega/r;
+Betax=dxPhi + Fx/r;
+Betay=dyPhi + Fy/r;
+
+// projection on the convex set
+
+for(int j=0; j<VC1.ndof; ++j){
+	real[int] q(3);
+	q[0] = Alpha[][j] ; q[1] = Betax[][j]; q[2] = Betay[][j];
+	q = ProxBB2Dint(q); 
+	alpha[][j]=q[0];
+	betax[][j]=q[1];
+  betay[][j]=q[2];
+}
+
+////////// projection on the lateral boundaries
+// A=dspi/dt+ gamma/r and C=(psi-phi)+f/r
+
+// quantities to be effectively projected 
+
+Ab=dtPsi + gamma/r;
+Bxb=dxPsi + Gx/r;
+Byb=dyPsi + Gy/r;
+
+VCb2 dummy2=psib-phib;
+Cb[]=P21b*dummy2[];
+Cb[]+=fb[]/r;
+
+
+// projections on the convex set
+for(int j=0; j<VCb1.ndof; ++j){
+	real[int] q(4);
+	q[0] = Ab[][j] ; q[1] = Bxb[][j]; q[2] = Byb[][j] ; ;q[3] = Cb[][j];
+	q = ProxUnbalBB2D(q);
+	ab[][j]=q[0];
+  bxb[][j]=q[1];
+  byb[][j]=q[2];
+	cb[][j]=q[3];
+}
+
+
+///////////////////// update the gradient ascent*/
+
+omega=omega+r*(dtPhi-alpha);
+Fx=Fx+r*(dxPhi-betax);
+Fy=Fy+r*(dyPhi-betay);
+
+
+gamma=gamma+r*(dtPsi-ab);
+Gx=Gx+r*(dxPsi-bxb);
+Gy=Gy+r*(dyPsi-byb);
+fb=fb+r*(psib-phib -cb);  
+
+
+////////////// compute the current error easy style
+real errC,errCb ;
+errC=int3d(Cylinder)((omega-omegatemp)^2);
+/*errS=sqrt(errS);*/
+errCb=int3d(Cylinderboundary)((gamma-gammatemp)^2);
+/*errCb=sqrt(errCb);*/
+
+
+/*cout << "current left error = " << errL << endl;*/
+/*cout << "current right error = " << errR << endl;*/
+/*cout << "current center error = " << errS << endl;*/
+
+err=errC+errCb ;
+/*err=sqrt(err);*/
+
+
+// increment the loop counter
+ii+=1;
+cout<< "current error = " << err <<endl;
+cout<< "current iteration number " << ii <<endl;
+
+}
+
+plot(omega,value=true,ps="dens_omega.eps", wait=true,fill=true,hsv=colormapHSVjet);
+
+
+
+/////////////// post-processing and offstream to octave ////////////
+VC1 gammaC;
+gammaC[]=extendCb1toC1*gamma[];
+
+plot(gammaC,value=true,ps="dens_gamma.eps", wait=true,fill=true,hsv=colormapHSVjet);
+
+
+fC[]=extendCb1toC1*fb[];
+
+plot(fC,value=true,ps="dens_reaction.eps", wait=true,fill=true,hsv=colormapHSVjet);
+
+
+// mass omega
+string smassomega = "MASOmega"+nt+".txt";
+ofstream rMASOmega(smassomega);
+
+// mass gamma :
+string smassgamma = "MASGamma"+nt+".txt";
+ofstream rMASGamma(smassgamma);
+
+//mass sum :
+string smasssum = "MASSum"+nt+".txt";
+ofstream rMASSum(smasssum);
+
+VC1 oo1;
+VCb1 gg1, gg1C ,ff1;
+for(int jj=0 ;jj<=20;jj++){
+  real t=jj*0.05;
+  oo1=omega(x,y,t);
+  gg1=gamma(x,y,t);
+  gg1C=gammaC(x,y,t);
+  ff1=fC(x,y,t);
+  plot(oo1,value=true,ps="dens_omega-"+t+".eps", wait=true,fill=true,hsv=colormapHSVjet);
+  plot(gg1C,value=true,ps="dens_gamma-"+t+".eps", wait=true,fill=true,hsv=colormapHSVjet);
+  plot(ff1,value=true,ps="dens_reaction-"+t+".eps", wait=true,fill=true,hsv=colormapHSVjet);
+
+  real Momega=int2d(Cylinder,labelt0)(oo1);
+  real Mgamma= int2d(Cylinderboundary,labelt0)(gg1);
+  real Mtotal=Momega+Mgamma;
+  rMASOmega  << t << "   " <<  Momega << "     "  <<  "\n" ;
+  rMASGamma  << t << "   " <<Mgamma <<  "     "  <<  "\n" ;
+  rMASSum    << t << "  " << Mtotal << "    "<<  "\n" ;
+}

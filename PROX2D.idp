@@ -1,0 +1,147 @@
+// auxiliary Proximal for the original Benamou-Brenier
+// computes the projection (minimal Euclidean distance) of the input sigma=(a,bx,by) on the set $K={a+|b|^2/2 \leq 0}$
+
+
+
+func real[int] ProxBB2Dint(real[int] &q)
+{
+    // for the case where nothing needs to be done, i-e input already belongs to the convex set
+   real a = q[0] ; real b1  = q[1] ; real b2 = q[2];  // in 2 space dimensions, so b=(bx,by)
+   real normm = (b1^2 + b2^2)/2; 
+   if( a+normm > 0 )
+   {  // if a +|b|^2/2 <=0 then (a,b) already belong to the convex set so there is nothing to do and proj (a,b)=(a,b)
+    //////////////// start newton loop to find the cubic root ///////////////////////
+	int maxit = 200; // maximal number of iterations
+	real tol = 1.e-09; // tolerance for the residual
+	int  k=0; 	// iteration counter
+	real err=1;	// absolute error
+	real l=1.e+04;	// start searching for the highest (positive) root very far to the right
+	real ltemp;
+	real P;		// 3rd order polynomial evaluated at the current value of lambda
+	real Pl;	// derivative of the polynomial evaluated at the current value of lambda
+	while(k < maxit && err > tol)
+		{  // newton 
+		ltemp=l;  // keep a copy ltemp of the previous iteration
+		P=(l-a)*(1+l)^2 -normm;
+		Pl=(1+l)^2+2*(l-a)*(1+l);
+		l=ltemp-(P/Pl);  // update lambda
+		k+=1;
+		err=abs(l-ltemp); // update the absolute error
+		}
+	q[0]-=l;
+	q[1]/=(1+l);
+	q[2]/=(1+l);
+	
+	
+//// 
+    }
+return q;
+}
+
+func real[int] ProxBB1Dvisco(real[int] &q, real &kappa)
+{
+   real mu=kappa^2;
+   real a = q[0] ; real c  = q[1] ;   // in 1 space dimensions
+   real normm = c^2/2; 
+   if( a+(normm/mu) > 0 )	// for the case where nothing needs to be done, i-e input already belongs to the convex set
+   {  // if a +|c|^2/(2 kappa^2) <=0 then (a,b) already belong to the convex set so there is nothing to do and proj (a,c)=(a,c)
+    //////////////// start newton loop to find the cubic root ///////////////////////
+	int maxit = 200; // maximal number of iterations
+	real tol = 1.e-09; // tolerance for the residual
+	int  k=0; 	// iteration counter
+	real err=1;	// absolute error
+	real l=1.e+06;	// start searching for the highest (positive) root very far to the right
+	real ltemp;
+	real P;		// 3rd order polynomial evaluated at the current value of lambda
+	real Pl;	// derivative of the polynomial evaluated at the current value of lambda
+	while(k < maxit && err > tol)
+		{  // newton 
+		ltemp=l;  // keep a copy ltemp of the previous iteration
+		P=(l-a)*((mu+l)^2)-mu*normm;
+		Pl=(mu+l)^2 + 2.*(l-a)*(mu+l);
+		l=ltemp-(P/Pl);  // update lambda
+		k+=1;
+/*		cout << "Newton iteration " << k << endl;*/
+		err=abs(l-ltemp); // update the absolute error
+		}
+	q[0]-=l;
+	q[1]*=mu;
+	q[1]/=(mu+l);
+	
+	
+//// 
+    }
+return q;
+}
+
+
+// unbalanced for kappa =1
+
+func real[int] ProxUnbalBB2D(real[int] &q)
+{
+    // for the case where nothing needs to be done, i-e input already belongs to the convex set
+   real a = q[0] ; real b1  = q[1] ; real b2 = q[2]; real c =q[3];  // in 2 space dimensions, so b=(bx,by)
+   real normm = (b1^2 + b2^2 + c^2)/2; 
+   if( a+normm > 0 )
+   {  // if a +|b|^2/2 <=0 then (a,b) already belong to the convex set so there is nothing to do and proj (a,b)=(a,b)
+    //////////////// start newton loop to find the cubic root ///////////////////////
+	int maxit = 200; // maximal number of iterations
+	real tol = 1.e-09; // tolerance for the residual
+	int  k=0; 	// iteration counter
+	real err=1;	// absolute error
+	real l=1.e+04;	// start searching for the highest (positive) root very far to the right
+	real ltemp;
+	real P;		// 3rd order polynomial evaluated at the current value of lambda
+	real Pl;	// derivative of the polynomial evaluated at the current value of lambda
+	while(k < maxit && err > tol)
+		{  // newton 
+		ltemp=l;  // keep a copy ltemp of the previous iteration
+		P=(l-a)*(1+l)^2 -normm;
+		Pl=(1+l)^2+2*(l-a)*(1+l);
+		l=ltemp-(P/Pl);  // update lambda
+		k+=1;
+		err=abs(l-ltemp); // update the absolute error
+		}
+	q[0]-=l;
+	q[1]/=(1+l);
+	q[2]/=(1+l);
+	q[3]/=(1+l);
+	
+	
+//// 
+    }
+return q;
+}
+
+
+
+
+/*macro numbbvisco(l,a,nb,mu) (-l^3+(a-2*mu)*l^2+(2*a*mu- mu*mu)*l+a*mu*mu+nb*mu) // EOM*/
+/*macro denbbvisco(l,a,mu) (-3*l^2+2*(a-2*mu)*l+2*a*mu- mu^2) // EOM*/
+
+/*func real[int] ProxBB1Dvisco(real[int] &sig, real &kappa) {  // newton version atte*/
+/*real mu=kappa^2;*/
+/*// takes in where the prox needs to be calculated return arginf*/
+/*   real ro = sig[0] ; real m1 = sig[1];*/
+/*   real normm = (m1^2)/2 ;*/
+/*   if( ro+normm/mu > 0 ) {  // sinon c'est fini*/
+/*    // newton on the cubic abov*/
+/*  int k =0 ;*/
+/* real  u0 = 10 ;*/
+/* real f0=  numbbvisco(u0,ro,normm,mu) ;  // toujours negatif*/
+/*real   u1 =0 ;*/
+/*real f1=  numbbvisco(u1,ro,normm,mu) ; // toujours positif*/
+/*//cout << f0  << "    " << f1 <<   endl ;*/
+/*real uc=(u0+u1)/2 ;*/
+/*real fc=   numbbvisco(uc,ro,normm,mu) ;*/
+/*while( abs(u0-u1) > 1.e-15){*/
+/*if(f0*fc >0) {u0 = uc ; f0= fc ; }*/
+/*else {u1 =uc ; }*/
+/*uc=(u0+u1)/2 ;*/
+/*fc= numbbvisco(uc,ro,normm,mu);*/
+/*k+=1;*/
+/*}*/
+/*cout << "Newton iteration" <<  k  <<  endl ;*/
+/*sig[0] -= uc ;   sig[1] /=(mu+uc) ;sig[1] *=mu;}*/
+/*////*/
+/*return sig ; }*/
